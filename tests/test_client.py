@@ -1,3 +1,4 @@
+# pyright: reportMissingImports=false
 import asyncio
 import json
 import socket
@@ -93,6 +94,18 @@ def test_malformed_json_reports_type_and_only_first_200_bytes():
     assert "text/plain" in message
     assert "x" * 200 in message
     assert "DO-NOT-INCLUDE" not in message
+
+
+def test_http_400_includes_status_and_response_body():
+    with (
+        fake_server(status=400, body=b'{"error":"content is required"}') as server,
+        pytest.raises(AgentMemoryError) as error,
+    ):
+        run_request(AgentMemoryClient(server.url))
+
+    assert str(error.value) == (
+        'agentmemory returned HTTP 400: {"error":"content is required"}'
+    )
 
 
 def test_http_error_body_is_truncated_to_2_kib():

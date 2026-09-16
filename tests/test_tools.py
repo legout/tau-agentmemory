@@ -1,34 +1,28 @@
 # pyright: reportMissingImports=false
-from __future__ import annotations
+import asyncio
+import json
+from urllib.parse import parse_qs, urlsplit
 
-from collections.abc import Mapping
-from typing import Any
+import pytest
+from fake_server import fake_server
 
-from tau_agent.messages import TextContent
-from tau_agent.tools import (
-    AgentTool,
-    AgentToolResult,
-    ToolCancellationToken,
-    ToolUpdateCallback,
-)
-from tau_agent.types import JSONValue
+from tau_agentmemory.client import AgentMemoryClient
+from tau_agentmemory.tools import TOOL_SPECS, make_tool
 
-from .client import AgentMemoryClient
+EMPTY_SCHEMA = {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": False,
+}
 
-TOOL_SPECS = (
-    {
-        "name": "memory_health",
+EXPECTED_TOOLS = {
+    "memory_health": {
         "method": "GET",
         "path": "/agentmemory/livez",
         "description": "Check whether the agentmemory service is healthy.",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-        },
+        "parameters": EMPTY_SCHEMA,
     },
-    {
-        "name": "memory_save",
+    "memory_save": {
         "method": "POST",
         "path": "/agentmemory/remember",
         "description": (
@@ -72,10 +66,8 @@ TOOL_SPECS = (
             "required": ["content"],
             "additionalProperties": False,
         },
-        "list_fields": ("concepts", "files"),
     },
-    {
-        "name": "memory_smart_search",
+    "memory_smart_search": {
         "method": "POST",
         "path": "/agentmemory/smart-search",
         "description": "Hybrid semantic+keyword search with progressive disclosure.",
@@ -95,10 +87,8 @@ TOOL_SPECS = (
             "required": ["query"],
             "additionalProperties": False,
         },
-        "list_fields": ("expandIds",),
     },
-    {
-        "name": "memory_recall",
+    "memory_recall": {
         "method": "POST",
         "path": "/agentmemory/search",
         "description": (
@@ -132,8 +122,7 @@ TOOL_SPECS = (
             "additionalProperties": False,
         },
     },
-    {
-        "name": "memory_sessions",
+    "memory_sessions": {
         "method": "GET",
         "path": "/agentmemory/sessions",
         "description": "List recent sessions with their status and observation counts.",
@@ -145,8 +134,7 @@ TOOL_SPECS = (
             "additionalProperties": False,
         },
     },
-    {
-        "name": "memory_commits",
+    "memory_commits": {
         "method": "GET",
         "path": "/agentmemory/commits",
         "description": (
@@ -169,8 +157,7 @@ TOOL_SPECS = (
             "additionalProperties": False,
         },
     },
-    {
-        "name": "memory_commit_lookup",
+    "memory_commit_lookup": {
         "method": "GET",
         "path": "/agentmemory/session/by-commit",
         "description": (
@@ -186,8 +173,7 @@ TOOL_SPECS = (
             "additionalProperties": False,
         },
     },
-    {
-        "name": "memory_governance_delete",
+    "memory_governance_delete": {
         "method": "DELETE",
         "path": "/agentmemory/governance/memories",
         "description": "Delete specific memories with audit trail.",
@@ -203,10 +189,8 @@ TOOL_SPECS = (
             "required": ["memoryIds"],
             "additionalProperties": False,
         },
-        "list_fields": ("memoryIds",),
     },
-    {
-        "name": "memory_lesson_save",
+    "memory_lesson_save": {
         "method": "POST",
         "path": "/agentmemory/lessons",
         "description": (
@@ -245,8 +229,7 @@ TOOL_SPECS = (
             "additionalProperties": False,
         },
     },
-    {
-        "name": "memory_lesson_recall",
+    "memory_lesson_recall": {
         "method": "POST",
         "path": "/agentmemory/lessons/search",
         "description": (
@@ -274,29 +257,151 @@ TOOL_SPECS = (
             "additionalProperties": False,
         },
     },
+}
+
+ROUND_TRIPS = (
+    ("memory_health", {}, {}, None),
+    (
+        "memory_save",
+        {
+            "content": "keep this",
+            "type": "fact",
+            "concepts": " alpha, beta, ,gamma ",
+            "files": " src/a.py, , tests/a.py ",
+            "project": "tau-agentmemory",
+            "agentId": "agent-1",
+        },
+        {},
+        {
+            "content": "keep this",
+            "type": "fact",
+            "concepts": ["alpha", "beta", "gamma"],
+            "files": ["src/a.py", "tests/a.py"],
+            "project": "tau-agentmemory",
+            "agentId": "agent-1",
+        },
+    ),
+    (
+        "memory_smart_search",
+        {"query": "past choice", "expandIds": " obs-1, ,obs-2 ", "limit": 7},
+        {},
+        {"query": "past choice", "expandIds": ["obs-1", "obs-2"], "limit": 7},
+    ),
+    (
+        "memory_recall",
+        {"query": "bridge", "limit": 4, "format": "compact", "token_budget": 500},
+        {},
+        {"query": "bridge", "limit": 4, "format": "compact", "token_budget": 500},
+    ),
+    ("memory_sessions", {"limit": 8}, {"limit": ["8"]}, None),
+    (
+        "memory_commits",
+        {"branch": "feature/two words", "repo": "owner/repo", "limit": 12},
+        {"branch": ["feature/two words"], "repo": ["owner/repo"], "limit": ["12"]},
+        None,
+    ),
+    ("memory_commit_lookup", {"sha": "abc123"}, {"sha": ["abc123"]}, None),
+    (
+        "memory_governance_delete",
+        {"memoryIds": " memory-1, ,memory-2 ", "reason": "obsolete"},
+        {},
+        {"memoryIds": ["memory-1", "memory-2"], "reason": "obsolete"},
+    ),
+    (
+        "memory_lesson_save",
+        {
+            "content": "prefer stdlib",
+            "context": "small bridges",
+            "confidence": 0.9,
+            "project": "tau-agentmemory",
+            "tags": "python,rest",
+        },
+        {},
+        {
+            "content": "prefer stdlib",
+            "context": "small bridges",
+            "confidence": 0.9,
+            "project": "tau-agentmemory",
+            "tags": "python,rest",
+        },
+    ),
+    (
+        "memory_lesson_recall",
+        {"query": "stdlib", "project": "tau-agentmemory", "minConfidence": 0.4, "limit": 3},
+        {},
+        {"query": "stdlib", "project": "tau-agentmemory", "minConfidence": 0.4, "limit": 3},
+    ),
 )
 
+REQUIRED_ONLY = {
+    "memory_health": {},
+    "memory_save": {"content": "keep this"},
+    "memory_smart_search": {"query": "past choice"},
+    "memory_recall": {"query": "bridge"},
+    "memory_sessions": {},
+    "memory_commits": {},
+    "memory_commit_lookup": {"sha": "abc123"},
+    "memory_governance_delete": {"memoryIds": " memory-1, ,memory-2 "},
+    "memory_lesson_save": {"content": "prefer stdlib"},
+    "memory_lesson_recall": {"query": "stdlib"},
+}
 
-def make_tool(spec: Mapping[str, Any], client: AgentMemoryClient) -> AgentTool:
-    async def execute(
-        tool_call_id: str,
-        arguments: Mapping[str, JSONValue],
-        signal: ToolCancellationToken | None = None,
-        on_update: ToolUpdateCallback | None = None,
-    ) -> AgentToolResult:
-        del tool_call_id, signal, on_update
-        params = dict(arguments)
-        for field in spec.get("list_fields", ()):
-            value = params.get(field)
-            if isinstance(value, str):
-                params[field] = [item.strip() for item in value.split(",") if item.strip()]
-        text = await client.request(spec["method"], spec["path"], params)
-        return AgentToolResult(content=[TextContent(text=text)])
 
-    return AgentTool(
-        name=spec["name"],
-        label=spec["name"],
-        description=spec["description"],
-        parameters=spec["parameters"],
-        execute_fn=execute,
-    )
+def get_spec(name):
+    return next(spec for spec in TOOL_SPECS if spec["name"] == name)
+
+
+def execute(tool, arguments):
+    return asyncio.run(tool.execute_fn("call-id", arguments, None, None))
+
+
+def test_all_ten_tools_have_exact_names_schemas_and_descriptions():
+    assert [spec["name"] for spec in TOOL_SPECS] == list(EXPECTED_TOOLS)
+
+    client = AgentMemoryClient("http://example.test")
+    for name, expected in EXPECTED_TOOLS.items():
+        spec = get_spec(name)
+        tool = make_tool(spec, client)
+        assert spec["method"] == expected["method"]
+        assert spec["path"] == expected["path"]
+        assert tool.name == name
+        assert tool.label == name
+        assert tool.description == expected["description"]
+        assert tool.parameters == expected["parameters"]
+
+
+@pytest.mark.parametrize(("name", "arguments", "expected_query", "expected_body"), ROUND_TRIPS)
+def test_tool_round_trip(name, arguments, expected_query, expected_body):
+    response = '{ "tool": "ok" }\n'
+    with fake_server(body=response.encode()) as server:
+        spec = get_spec(name)
+        result = execute(make_tool(spec, AgentMemoryClient(server.url, "secret")), arguments)
+
+    request = server.requests[0]
+    split_path = urlsplit(request["path"])
+    assert request["method"] == EXPECTED_TOOLS[name]["method"]
+    assert split_path.path == EXPECTED_TOOLS[name]["path"]
+    assert parse_qs(split_path.query) == expected_query
+    assert request["headers"]["Authorization"] == "Bearer secret"
+    assert (json.loads(request["body"]) if request["body"] else None) == expected_body
+    assert getattr(result.content[0], "text", None) == response
+
+
+@pytest.mark.parametrize(("name", "arguments"), REQUIRED_ONLY.items())
+def test_absent_optional_values_are_omitted(name, arguments):
+    with fake_server() as server:
+        spec = get_spec(name)
+        execute(make_tool(spec, AgentMemoryClient(server.url)), arguments)
+
+    request = server.requests[0]
+    split_path = urlsplit(request["path"])
+    if EXPECTED_TOOLS[name]["method"] == "GET":
+        assert parse_qs(split_path.query) == {
+            key: [str(value)] for key, value in arguments.items()
+        }
+        assert request["body"] == b""
+    else:
+        expected = dict(arguments)
+        if name == "memory_governance_delete":
+            expected["memoryIds"] = ["memory-1", "memory-2"]
+        assert json.loads(request["body"]) == expected
