@@ -1,0 +1,23 @@
+[project]
+name = "tau-agentmemory"
+version = "0.1.0"
+description = "Tau extension for agentmemory's REST API"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "tau-ai==0.4.4",
+]
+
+[tool.tau]
+extensions = ["src/tau_agentmemory/extension.py"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.pyright]
+extraPaths = ["src"]
+venvPath = "."
+venv = ".venv"
