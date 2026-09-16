@@ -1,7 +1,8 @@
 # Spec 0001: agentmemory REST bridge for Tau
 
-Status: **Approved, revision 1** — the owner approved A1 (REST-native core
-set), A2 (MCP coexistence), and the complete specification on 2026-09-16.
+Status: **Approved, revision 2** — the owner approved A1 (REST-native core
+set), A2 (MCP coexistence), the complete revision 1 specification, and the
+list-parameter REST normalization amendment on 2026-09-16.
 
 ## Goal
 
@@ -70,11 +71,16 @@ implementation detail.
 | `memory_lesson_recall` | `POST /agentmemory/lessons/search` | `query*`, `project`, `minConfidence`, `limit` |
 
 Adding a tool later = one declarative table row (name, method, path, params,
-description). Parameters pass through as a JSON body (POST/DELETE) or query
-string (GET); unknown fields are dropped server-side, so pass-through is safe.
-`memory_sessions.limit` is intentionally accepted even though the MCP reference
-lists no parameters because the installed recap, handoff, and session-history
-skills pass it and the REST endpoint supports it.
+description). Tau-facing schemas preserve the agentmemory MCP contract. Most
+parameters pass through as a JSON body (POST/DELETE) or query string (GET).
+The MCP contract represents list parameters as comma-separated strings, while
+the REST API expects arrays for `memory_save.concepts`, `memory_save.files`,
+`memory_smart_search.expandIds`, and `memory_governance_delete.memoryIds`.
+The executor splits those fields on commas, trims whitespace, drops empty
+items, and serializes the resulting arrays; all other parameters remain
+unchanged. `memory_sessions.limit` is intentionally accepted even though the
+MCP reference lists no parameters because the installed recap, handoff, and
+session-history skills pass it and the REST endpoint supports it.
 
 ### Registration
 
@@ -92,11 +98,11 @@ warning below. The probe never blocks or fails the session.
 
 ## Data flow
 
-Model calls `memory_smart_search {query, limit}` → executor serializes the
-JSON body → `urllib` POST with 10s timeout and optional bearer header →
-JSON responses are syntax-validated, then the original response body is returned
-verbatim as tool text content. GET tools serialize documented parameters into
-the query string.
+Model calls `memory_smart_search {query, limit}` → executor normalizes only
+approved list-encoded fields → serializes the JSON body → `urllib` POST with
+10s timeout and optional bearer header → JSON responses are syntax-validated,
+then the original response body is returned verbatim as tool text content. GET
+tools serialize documented parameters into the query string.
 
 ## Failures
 
@@ -133,8 +139,9 @@ with `include_resource_dirs=False` (per Tau's extension testing guide), using
    error; the session otherwise works normally.
 3. `~/.agentmemory/.env` containing `AGENTMEMORY_SECRET=x` produces
    `Authorization: Bearer x` on every request (asserted by the fake server).
-4. A skill referencing any core tool name passes its documented parameters
-   through unchanged (round-trip asserted per tool by tests).
+4. A skill referencing any core tool name uses its documented Tau-facing
+   parameters unchanged. Round-trip tests assert exact REST requests, including
+   the approved comma-separated-string-to-array normalization.
 
 ## Decision log
 
@@ -144,3 +151,6 @@ with `include_resource_dirs=False` (per Tau's extension testing guide), using
 - 2026-09-16, owner: revision 1 approved with the 10-tool table,
   `memory_sessions.limit` compatibility behavior, JSON validation semantics, and
   the capture-checkpoint outcome recorded in the implementation plan.
+- 2026-09-16, owner: revision 2 approved to preserve MCP-compatible string
+  schemas while normalizing `concepts`, `files`, `expandIds`, and `memoryIds`
+  into the arrays required by the REST API.

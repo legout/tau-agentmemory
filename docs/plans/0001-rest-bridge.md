@@ -7,7 +7,7 @@ integration or publication.
 ## Goal and source
 
 Implement the approved REST-native Tau extension in
-[`docs/specs/0001-rest-bridge.md`](../specs/0001-rest-bridge.md), revision 1,
+[`docs/specs/0001-rest-bridge.md`](../specs/0001-rest-bridge.md), revision 2,
 approved by the owner on 2026-09-16. The architectural rationale is
 [`docs/adr/0001-rest-native-bridge.md`](../adr/0001-rest-native-bridge.md), accepted
 on 2026-09-16.
@@ -22,8 +22,9 @@ dependency overview; task details are not duplicated here.
   the specification and ADR.
 - **Decision:** ADR 0001 owns the accepted REST-native architecture and the
   coexistence boundary with tau-mcp.
-- **Behavior:** Spec 0001 revision 1 owns the 10-tool surface, configuration,
-  failures, testing, and four acceptance examples.
+- **Behavior:** Spec 0001 revision 2 owns the 10-tool surface, configuration,
+  approved list-parameter normalization, failures, testing, and four acceptance
+  examples.
 - **Uncertainty:** no material design decisions remain. Planning evidence
   confirmed Tau 0.4.4’s extension APIs and the installed skills’ use of
   `memory_sessions.limit`.
@@ -36,6 +37,8 @@ dependency overview; task details are not duplicated here.
 - Do not spawn, supervise, configure, retry, or poll the agentmemory server.
 - Do not add MCP support, capture hooks, automatic context injection, or the
   long-tail REST surface.
+- Preserve MCP-compatible Tau schemas. Normalize only the approved list-encoded
+  fields (`concepts`, `files`, `expandIds`, `memoryIds`) to REST arrays.
 - Return successful response bodies unchanged after JSON syntax validation.
   Raise sanitized exceptions for failures so Tau marks tool results as errors.
 - Never expose `AGENTMEMORY_SECRET` in text, diagnostics, exception chaining, or
