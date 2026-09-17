@@ -2,16 +2,43 @@
 import asyncio
 import json
 import socket
+import warnings
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fake_server import fake_server
 
 from tau_agentmemory.client import AgentMemoryClient, AgentMemoryError
+from tau_agentmemory.security import PlaintextBearerWarning
 
 
 def run_request(client, method="GET", path="/agentmemory/livez", params=None):
     return asyncio.run(client.request(method, path, params or {}))
+
+
+class CannedResponse:
+    def __init__(self):
+        self.headers = {"Content-Type": "application/json"}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def read(self):
+        return b"{}"
+
+
+def record_urlopen(monkeypatch):
+    opened = []
+
+    def open_request(request, *, timeout):
+        opened.append(request)
+        return CannedResponse()
+
+    monkeypatch.setattr("tau_agentmemory.client.urlopen", open_request)
+    return opened
 
 
 def test_health_success_preserves_body_and_omits_auth():
@@ -150,3 +177,106 @@ def test_unreachable_closed_port_has_actionable_one_line_error():
         "or set AGENTMEMORY_URL"
     )
     assert "\n" not in str(error.value)
+
+
+def test_loopback_http_with_secret_sends_without_warning():
+    body = '{ "status": "ok" }\n'
+    with (
+        fake_server(body=body.encode()) as server,
+        warnings.catch_warnings(record=True) as caught,
+    ):
+        warnings.simplefilter("always")
+        assert run_request(AgentMemoryClient(server.url, "top-secret")) == body
+
+    # "always"+record captures every interpreter warning (e.g. unrelated
+    # ResourceWarnings), so assert on the guard's category, not on emptiness.
+    assert not any(w.category is PlaintextBearerWarning for w in caught)
+    assert server.requests[0]["headers"]["Authorization"] == "Bearer top-secret"
+
+
+def test_https_with_secret_sends_without_warning(monkeypatch):
+    opened = record_urlopen(monkeypatch)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert run_request(
+            AgentMemoryClient("https://agent.example:3111", "top-secret")
+        ) == "{}"
+
+    assert not any(w.category is PlaintextBearerWarning for w in caught)
+    assert len(opened) == 1
+    assert opened[0].get_header("Authorization") == "Bearer top-secret"
+
+
+def test_remote_http_with_secret_warns_once_then_sends_each_request(monkeypatch):
+    opened = record_urlopen(monkeypatch)
+
+    client = AgentMemoryClient("http://agent.example:3111", "secret-value")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert run_request(client) == "{}"
+        assert run_request(client) == "{}"
+
+    assert len(caught) == 1
+    assert caught[0].category is PlaintextBearerWarning
+    message = str(caught[0].message)
+    assert "http://agent.example:3111" in message
+    assert "plaintext" in message
+    assert "secret-value" not in message
+    assert len(opened) == 2
+    assert opened[0].get_header("Authorization") == "Bearer secret-value"
+
+
+def test_userinfo_secret_never_appears_in_warning_or_enforcement_error(monkeypatch):
+    opened = record_urlopen(monkeypatch)
+    url = "http://hushhush@agent.example:3111"
+
+    client = AgentMemoryClient(url, "hushhush")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert run_request(client) == "{}"
+
+    assert len(caught) == 1
+    warning = str(caught[0].message)
+    assert "hushhush" not in warning
+    assert "agent.example" in warning
+    assert opened[0].get_header("Authorization") == "Bearer hushhush"
+
+    blocked = AgentMemoryClient(url, "hushhush", require_https=True)
+    with pytest.raises(AgentMemoryError) as error:
+        run_request(blocked)
+
+    message = str(error.value)
+    assert "hushhush" not in message
+    assert "agent.example" in message
+    assert "\n" not in message
+    assert len(opened) == 1
+
+
+def test_require_https_blocks_remote_http_before_any_network_io(monkeypatch):
+    opened = record_urlopen(monkeypatch)
+
+    client = AgentMemoryClient(
+        "http://agent.example:3111", "secret-value", require_https=True
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(AgentMemoryError) as error:
+            run_request(client)
+        with pytest.raises(AgentMemoryError):
+            run_request(client)
+
+    message = str(error.value)
+    assert "http://agent.example:3111" in message
+    assert "secret-value" not in message
+    assert "\n" not in message
+    assert opened == []
+    assert caught == []
+
+
+def test_require_https_still_allows_loopback_http():
+    body = '{ "status": "ok" }\n'
+    with fake_server(body=body.encode()) as server:
+        assert run_request(
+            AgentMemoryClient(server.url, "top-secret", require_https=True)
+        ) == body

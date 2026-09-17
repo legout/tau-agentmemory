@@ -11,7 +11,9 @@ from .tools import TOOL_SPECS, make_tool
 
 def setup(tau: ExtensionAPI) -> None:
     config = load_config()
-    client = AgentMemoryClient(config.url, config.secret)
+    client = AgentMemoryClient(
+        config.url, config.secret, require_https=config.require_https
+    )
     for spec in TOOL_SPECS:
         tau.register_tool(make_tool(spec, client))
     tau.add_prompt_guideline(
