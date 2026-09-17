@@ -79,7 +79,8 @@ def test_real_runtime_registers_acceptance_surface_and_reports_healthy_sidebar(
 
     assert runtime.diagnostics == ()
     assert [request["path"] for request in server.requests] == [
-        "/agentmemory/livez"
+        "/agentmemory/livez",
+        "/agentmemory/session/start",
     ]
     assert ui.sections == [
         (
@@ -122,7 +123,8 @@ def test_session_start_probes_with_unsupported_sidebar(monkeypatch, tmp_path):
 
     assert runtime.diagnostics == ()
     assert [request["path"] for request in server.requests] == [
-        "/agentmemory/livez"
+        "/agentmemory/livez",
+        "/agentmemory/session/start",
     ]
     assert ui.sections == []
 
@@ -134,7 +136,8 @@ def test_session_start_probes_without_ui(monkeypatch, tmp_path):
 
     assert runtime.diagnostics == ()
     assert [request["path"] for request in server.requests] == [
-        "/agentmemory/livez"
+        "/agentmemory/livez",
+        "/agentmemory/session/start",
     ]
 
 

@@ -1,11 +1,10 @@
 # pyright: reportMissingImports=false
-from functools import partial
 
 from tau_coding.extensions import ExtensionAPI
 
 from .client import AgentMemoryClient
 from .config import load_config
-from .health import handle_session_start
+from .lifecycle import register_lifecycle
 from .tools import TOOL_SPECS, make_tool
 
 
@@ -24,7 +23,4 @@ def setup(tau: ExtensionAPI) -> None:
         "Use memory_save when you discover durable facts worth remembering beyond "
         "this session."
     )
-    tau.on(
-        "session_start",
-        partial(handle_session_start, client=client, config=config),
-    )
+    register_lifecycle(tau, client=client, config=config)

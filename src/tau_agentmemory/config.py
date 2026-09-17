@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _DEFAULT_URL = "http://localhost:3111"
-_KEYS = ("AGENTMEMORY_URL", "AGENTMEMORY_SECRET", "AGENTMEMORY_REQUIRE_HTTPS")
+_KEYS = (
+    "AGENTMEMORY_URL",
+    "AGENTMEMORY_SECRET",
+    "AGENTMEMORY_PROJECT_NAME",
+    "AGENTMEMORY_REQUIRE_HTTPS",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,6 +19,7 @@ class Config:
     url: str
     secret: str | None
     require_https: bool = False
+    project_name: str | None = None
 
 
 def _read_dotenv(path: Path) -> dict[str, str]:
@@ -43,8 +49,12 @@ def load_config(
     require_https_raw = environment.get(
         "AGENTMEMORY_REQUIRE_HTTPS", dotenv.get("AGENTMEMORY_REQUIRE_HTTPS", "0")
     )
+    project_name = environment.get(
+        "AGENTMEMORY_PROJECT_NAME", dotenv.get("AGENTMEMORY_PROJECT_NAME")
+    )
     return Config(
         url=url.rstrip("/"),
         secret=secret or None,
         require_https=require_https_raw == "1",
+        project_name=project_name or None,
     )

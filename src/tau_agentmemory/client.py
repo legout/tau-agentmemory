@@ -25,11 +25,13 @@ class AgentMemoryClient:
         self._plaintext_guard = PlaintextBearerGuard()
 
     async def request(
-        self, method: str, path: str, params: Mapping[str, Any]
+        self, method: str, path: str, params: Mapping[str, Any], timeout: float = 10.0
     ) -> str:
-        return await asyncio.to_thread(self._request, method, path, params)
+        return await asyncio.to_thread(self._request, method, path, params, timeout)
 
-    def _request(self, method: str, path: str, params: Mapping[str, Any]) -> str:
+    def _request(
+        self, method: str, path: str, params: Mapping[str, Any], timeout: float = 10.0
+    ) -> str:
         if self.secret and is_insecure_transport(self.url):
             if self.require_https:
                 raise AgentMemoryError(
@@ -56,7 +58,7 @@ class AgentMemoryClient:
 
         request = Request(url, data=body, headers=headers, method=method)
         try:
-            with urlopen(request, timeout=10) as response:
+            with urlopen(request, timeout=timeout) as response:
                 response_body = response.read()
                 content_type = response.headers.get("Content-Type", "unknown")
         except HTTPError as error:
