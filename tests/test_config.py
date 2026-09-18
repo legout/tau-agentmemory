@@ -82,6 +82,47 @@ def test_only_exact_one_enables_require_https_per_key_precedence(tmp_path):
     assert explicit_zero.require_https is False
 
 
+def test_capture_and_tool_observe_default_on(tmp_path):
+    config = load_config(environ={}, home=tmp_path)
+
+    assert config.capture is True
+    assert config.tool_observe is True
+
+
+def test_only_exact_zero_disables_capture_settings(tmp_path):
+    for raw in ("0", "no", "false", "", " 0", "0 "):
+        disabled = raw == "0"
+        config = load_config(
+            environ={
+                "AGENTMEMORY_CAPTURE": raw,
+                "AGENTMEMORY_TOOL_OBSERVE": raw,
+            },
+            home=tmp_path,
+        )
+
+        assert config.capture is not disabled, raw
+        assert config.tool_observe is not disabled, raw
+
+
+def test_capture_settings_resolve_per_key_precedence(tmp_path):
+    config_dir = tmp_path / ".agentmemory"
+    config_dir.mkdir()
+    (config_dir / ".env").write_text(
+        "AGENTMEMORY_CAPTURE=0\nAGENTMEMORY_TOOL_OBSERVE=0\n", encoding="utf-8"
+    )
+
+    from_file = load_config(environ={}, home=tmp_path)
+    master_only = load_config(environ={"AGENTMEMORY_CAPTURE": "1"}, home=tmp_path)
+    tool_only = load_config(environ={"AGENTMEMORY_TOOL_OBSERVE": "1"}, home=tmp_path)
+
+    assert from_file.capture is False
+    assert from_file.tool_observe is False
+    assert master_only.capture is True
+    assert master_only.tool_observe is False
+    assert tool_only.capture is False
+    assert tool_only.tool_observe is True
+
+
 def test_require_https_resolves_from_dotenv_with_env_precedence(tmp_path):
     config_dir = tmp_path / ".agentmemory"
     config_dir.mkdir()

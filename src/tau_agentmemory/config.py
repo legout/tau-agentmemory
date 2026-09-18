@@ -11,6 +11,8 @@ _KEYS = (
     "AGENTMEMORY_SECRET",
     "AGENTMEMORY_PROJECT_NAME",
     "AGENTMEMORY_REQUIRE_HTTPS",
+    "AGENTMEMORY_CAPTURE",
+    "AGENTMEMORY_TOOL_OBSERVE",
 )
 
 
@@ -20,6 +22,8 @@ class Config:
     secret: str | None
     require_https: bool = False
     project_name: str | None = None
+    capture: bool = True
+    tool_observe: bool = True
 
 
 def _read_dotenv(path: Path) -> dict[str, str]:
@@ -52,9 +56,19 @@ def load_config(
     project_name = environment.get(
         "AGENTMEMORY_PROJECT_NAME", dotenv.get("AGENTMEMORY_PROJECT_NAME")
     )
+    # Only the exact string "0" disables capture settings (Spec 0002,
+    # "Configuration"); every other value keeps the default-on behavior.
+    capture_raw = environment.get(
+        "AGENTMEMORY_CAPTURE", dotenv.get("AGENTMEMORY_CAPTURE", "1")
+    )
+    tool_observe_raw = environment.get(
+        "AGENTMEMORY_TOOL_OBSERVE", dotenv.get("AGENTMEMORY_TOOL_OBSERVE", "1")
+    )
     return Config(
         url=url.rstrip("/"),
         secret=secret or None,
         require_https=require_https_raw == "1",
         project_name=project_name or None,
+        capture=capture_raw != "0",
+        tool_observe=tool_observe_raw != "0",
     )
