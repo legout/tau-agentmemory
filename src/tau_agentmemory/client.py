@@ -8,22 +8,40 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from .security import PlaintextBearerGuard, is_insecure_transport, redacted_url
+
 
 class AgentMemoryError(RuntimeError):
     """A safe-to-display agentmemory request failure."""
 
 
 class AgentMemoryClient:
-    def __init__(self, url: str, secret: str | None = None) -> None:
+    def __init__(
+        self, url: str, secret: str | None = None, *, require_https: bool = False
+    ) -> None:
         self.url = url.rstrip("/")
         self.secret = secret
+        self.require_https = require_https
+        self._plaintext_guard = PlaintextBearerGuard()
 
     async def request(
-        self, method: str, path: str, params: Mapping[str, Any]
+        self, method: str, path: str, params: Mapping[str, Any], timeout: float = 10.0
     ) -> str:
-        return await asyncio.to_thread(self._request, method, path, params)
+        return await asyncio.to_thread(self._request, method, path, params, timeout)
 
-    def _request(self, method: str, path: str, params: Mapping[str, Any]) -> str:
+    def _request(
+        self, method: str, path: str, params: Mapping[str, Any], timeout: float = 10.0
+    ) -> str:
+        if self.secret and is_insecure_transport(self.url):
+            if self.require_https:
+                raise AgentMemoryError(
+                    "agentmemory request blocked: bearer credential would be sent "
+                    f"over plaintext HTTP to {redacted_url(self.url, self.secret)}; "
+                    "use HTTPS or a loopback URL, or unset "
+                    "AGENTMEMORY_REQUIRE_HTTPS to allow it"
+                )
+            self._plaintext_guard.warn_once(self.url, secret=self.secret)
+
         url = f"{self.url}/{path.lstrip('/')}"
         headers = {"Accept": "application/json"}
         if self.secret:
@@ -40,7 +58,7 @@ class AgentMemoryClient:
 
         request = Request(url, data=body, headers=headers, method=method)
         try:
-            with urlopen(request, timeout=10) as response:
+            with urlopen(request, timeout=timeout) as response:
                 response_body = response.read()
                 content_type = response.headers.get("Content-Type", "unknown")
         except HTTPError as error:

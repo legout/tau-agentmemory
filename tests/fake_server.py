@@ -22,6 +22,9 @@ class FakeServer(ThreadingHTTPServer):
     def __init__(self) -> None:
         super().__init__(("127.0.0.1", 0), FakeHandler)
         self.requests: list[RecordedRequest] = []
+        # Path-specific canned responses (query strings ignored); paths without
+        # a route entry fall back to the default response attributes.
+        self.routes: dict[str, tuple[int, bytes, str]] = {}
 
     @property
     def url(self) -> str:
@@ -41,10 +44,17 @@ class FakeHandler(BaseHTTPRequestHandler):
                 "body": body,
             }
         )
-        self.send_response(server.response_status)
-        self.send_header("Content-Type", server.response_content_type)
+        route = server.routes.get(self.path.split("?", 1)[0])
+        if route is not None:
+            status, response_body, content_type = route
+        else:
+            status = server.response_status
+            response_body = server.response_body
+            content_type = server.response_content_type
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
         self.end_headers()
-        self.wfile.write(server.response_body)
+        self.wfile.write(response_body)
 
     do_GET = _handle
     do_POST = _handle

@@ -41,9 +41,12 @@ class SidebarUi:
         self.sections.append((extension, key, title, content))
 
 
-def load_runtime(monkeypatch, tmp_path, url, *, ui=None):
+def load_runtime(monkeypatch, tmp_path, url, *, ui=None, secret=None):
     monkeypatch.setenv("AGENTMEMORY_URL", url)
-    monkeypatch.delenv("AGENTMEMORY_SECRET", raising=False)
+    if secret is None:
+        monkeypatch.delenv("AGENTMEMORY_SECRET", raising=False)
+    else:
+        monkeypatch.setenv("AGENTMEMORY_SECRET", secret)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     runtime = ExtensionRuntime(ui=ui)
     runtime.load(
@@ -76,7 +79,8 @@ def test_real_runtime_registers_acceptance_surface_and_reports_healthy_sidebar(
 
     assert runtime.diagnostics == ()
     assert [request["path"] for request in server.requests] == [
-        "/agentmemory/livez"
+        "/agentmemory/livez",
+        "/agentmemory/session/start",
     ]
     assert ui.sections == [
         (
@@ -119,7 +123,8 @@ def test_session_start_probes_with_unsupported_sidebar(monkeypatch, tmp_path):
 
     assert runtime.diagnostics == ()
     assert [request["path"] for request in server.requests] == [
-        "/agentmemory/livez"
+        "/agentmemory/livez",
+        "/agentmemory/session/start",
     ]
     assert ui.sections == []
 
@@ -131,5 +136,32 @@ def test_session_start_probes_without_ui(monkeypatch, tmp_path):
 
     assert runtime.diagnostics == ()
     assert [request["path"] for request in server.requests] == [
-        "/agentmemory/livez"
+        "/agentmemory/livez",
+        "/agentmemory/session/start",
+    ]
+
+
+def test_session_start_enforces_require_https_before_any_request(monkeypatch, tmp_path):
+    monkeypatch.setenv("AGENTMEMORY_REQUIRE_HTTPS", "1")
+    ui = SidebarUi()
+    runtime = load_runtime(
+        monkeypatch, tmp_path, "http://agent.example:3111", ui=ui, secret="secret-value"
+    )
+
+    asyncio.run(runtime.emit_session_start("startup"))
+
+    assert runtime.diagnostics == ()
+    assert ui.sections == [
+        (
+            "tau_agentmemory",
+            "status",
+            "agentmemory",
+            (
+                (
+                    "agentmemory request blocked: bearer credential would be sent over "
+                    "plaintext HTTP to http://agent.example:3111; use HTTPS or a "
+                    "loopback URL, or unset AGENTMEMORY_REQUIRE_HTTPS to allow it"
+                ),
+            ),
+        )
     ]
