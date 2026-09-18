@@ -17,10 +17,19 @@ tau-agentmemory does not install, configure, or start the server.
 
 Each setting is resolved independently in this order:
 
-1. The `AGENTMEMORY_URL` or `AGENTMEMORY_SECRET` environment variable.
+1. The matching `AGENTMEMORY_*` environment variable.
 2. The matching key in `~/.agentmemory/.env`, using one `KEY=value` per line
    (without `export`).
-3. `http://localhost:3111` for the URL and no secret.
+3. The default below.
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `AGENTMEMORY_URL` | `http://localhost:3111` | Server base URL. |
+| `AGENTMEMORY_SECRET` | none | Bearer credential for every request. |
+| `AGENTMEMORY_PROJECT_NAME` | derived | Stable project identifier; otherwise Git-root basename, then directory name. |
+| `AGENTMEMORY_CAPTURE` | `1` | `0` (exact value) disables prompt, tool, and conversation observations; recall, explicit tools, and session tracking stay on. |
+| `AGENTMEMORY_TOOL_OBSERVE` | `1` | `0` (exact value) disables tool observations only. |
+| `AGENTMEMORY_REQUIRE_HTTPS` | `0` | `1` (exact value) refuses bearer requests to non-loopback plaintext HTTP before any network I/O. |
 
 For example:
 
@@ -54,7 +63,7 @@ text, and every occurrence of the exact `AGENTMEMORY_SECRET` are replaced with
 best-effort: it cannot prove that arbitrary prose is free of sensitive
 information, so avoid pasting secrets into conversations with capture enabled.
 
-Two opt-outs exist (resolved like the settings above; only the exact value `0`
+Two capture opt-outs exist (rows in the table above; only the exact value `0`
 disables):
 
 ```dotenv
