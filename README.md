@@ -44,8 +44,10 @@ With default settings the extension also gives Tau automatic memory behavior:
 
 - **Automatic recall.** Each interactive prompt is searched against project
   memory first; when usable results exist, a bounded `<agentmemory-context>`
-  reference block (at most five results, 8,000 characters) is prepended to the
-  prompt. Extension-generated inputs are never recalled.
+  reference block (at most five results, 8,000 characters) is delivered to the
+  model as an invisible custom message in the same turn — the typed prompt is
+  never rewritten, and the transcript shows only a one-line recall note.
+  Extension-generated inputs are never recalled.
 - **Session tracking.** Tau sessions are announced to agentmemory and ended on
   session transitions; quitting schedules one best-effort consolidation.
 - **Automatic capture.** Each interactive prompt, each non-`memory_*` tool

@@ -75,6 +75,16 @@ def test_real_runtime_registers_acceptance_surface_and_reports_healthy_sidebar(
         assert runtime.diagnostics == ()
         assert [tool.name for tool in runtime.extension_tools] == TOOL_NAMES
         assert runtime.prompt_guidelines == GUIDELINES
+        # Recall renders as one dim line; the memory block itself never displays.
+        assert (
+            runtime.render_custom_message(
+                "agentmemory-context",
+                "<agentmemory-context>block</agentmemory-context>",
+                {"count": 3},
+                False,
+            )
+            == "[dim]agentmemory · 3 memories recalled[/dim]"
+        )
         asyncio.run(runtime.emit_session_start("startup"))
 
     assert runtime.diagnostics == ()

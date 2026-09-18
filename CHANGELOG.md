@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Changed
+
+- Automatic recall no longer rewrites the submitted prompt. Recall results are
+  delivered to the model as an invisible steering custom message in the same
+  turn (immediately after the prompt, before the first inference), and the
+  transcript renders a single dim `agentmemory · N memories recalled` line
+  instead of the full `<agentmemory-context>` block.
+
 ## 0.2.0 - 2026-09-17
 
 First published release: the complete Tau extension for agentmemory — the
