@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0 - 2026-09-18
+
 ### Changed
 
 - Automatic recall no longer rewrites the submitted prompt. Recall results are
